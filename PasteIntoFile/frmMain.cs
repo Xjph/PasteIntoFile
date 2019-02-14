@@ -1,22 +1,30 @@
 ﻿using Microsoft.Win32;
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Diagnostics;
-using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Runtime.InteropServices;
 
 namespace PasteAsFile
 {
     public partial class frmMain : Form
     {
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetClipboardOwner();
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        private Process ClipboardProcess()
+        {
+            uint processId;
+            GetWindowThreadProcessId(GetClipboardOwner(), out processId);
+            return Process.GetProcessById((int)processId);
+        }
         public string CurrentLocation { get; set; }
         public bool IsText { get; set; }
         public frmMain()
@@ -30,9 +38,6 @@ namespace PasteAsFile
         }
         private void frmMain_Load(object sender, EventArgs e)
         {
-            txtFilename.Text = DateTime.Now.ToString("dd-MM-yyyy HH-mm-ss");
-            txtCurrentLocation.Text = CurrentLocation ?? @"C:\";
-
             if (Registry.GetValue(@"HKEY_CURRENT_USER\Software\Classes\Directory\Background\shell\Paste Into File\command", "", null) == null)
             {
                 if (MessageBox.Show("Seems that you are running this application for the first time,\nDo you want to Register it with your system Context Menu ?", "Paste Into File", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
@@ -41,8 +46,17 @@ namespace PasteAsFile
                 }
             }
 
+            Process clipboardProcess = ClipboardProcess();
+            
+            txtFilename.Text = 
+                (clipboardProcess.ProcessName == "svchost" && Clipboard.ContainsImage()? 
+                "Screenclip" : string.IsNullOrWhiteSpace(clipboardProcess.MainModule.FileVersionInfo.FileDescription) ? 
+                    clipboardProcess.ProcessName : clipboardProcess.MainModule.FileVersionInfo.FileDescription)
+                + DateTime.Now.ToString(format: " - yyyy-MM-dd HH-mm-ss");
+
             if (Clipboard.ContainsText())
             {
+                txtCurrentLocation.Text = CurrentLocation ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
                 lblType.Text = "Text File";
                 comExt.SelectedItem = "txt";
                 IsText = true;
@@ -52,6 +66,7 @@ namespace PasteAsFile
 
             if (Clipboard.ContainsImage())
             {
+                txtCurrentLocation.Text = CurrentLocation ?? Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
                 lblType.Text = "Image";
                 comExt.SelectedItem = "png";
                 imgContent.Image = Clipboard.GetImage();
