@@ -1,41 +1,31 @@
 ﻿using Microsoft.Win32;
 using System;
 using System.Diagnostics;
-using System.Drawing.Imaging;
-using System.IO;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Runtime.InteropServices;
 
-namespace PasteAsFile
+namespace PasteIntoFile
 {
     public partial class frmMain : Form
     {
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetClipboardOwner();
+       
 
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-
-        private Process ClipboardProcess()
-        {
-            uint processId;
-            GetWindowThreadProcessId(GetClipboardOwner(), out processId);
-            return Process.GetProcessById((int)processId);
-        }
         public string CurrentLocation { get; set; }
+
         public bool IsText { get; set; }
+
         public frmMain()
         {
             InitializeComponent();
         }
+
         public frmMain(string location)
         {
             InitializeComponent();
             this.CurrentLocation = location;
         }
+
         private void frmMain_Load(object sender, EventArgs e)
         {
             if (Registry.GetValue(@"HKEY_CURRENT_USER\Software\Classes\Directory\Background\shell\Paste Into File\command", "", null) == null)
@@ -46,74 +36,56 @@ namespace PasteAsFile
                 }
             }
 
-            Process clipboardProcess = ClipboardProcess();
-            
-            txtFilename.Text = 
-                (clipboardProcess.ProcessName == "svchost" && Clipboard.ContainsImage()? 
-                "Screenclip" : string.IsNullOrWhiteSpace(clipboardProcess.MainModule.FileVersionInfo.FileDescription) ? 
-                    clipboardProcess.ProcessName : clipboardProcess.MainModule.FileVersionInfo.FileDescription)
-                + DateTime.Now.ToString(format: " - yyyy-MM-dd HH-mm-ss");
+            txtFilename.Text = DateTime.Now.ToString(((string)PasteIntoFile.Properties.Settings.Default["filenameFormat"]).Replace("%application%", "'" + Program.GetSourceName() + "'"));
 
             if (Clipboard.ContainsText())
             {
                 txtCurrentLocation.Text = CurrentLocation ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
                 lblType.Text = "Text File";
-                comExt.SelectedItem = "txt";
+                comExt.Items.Remove("png");
+                comExt.Items.Remove("jpg");
+                comExt.Items.Remove("bmp");
+                comExt.Items.Remove("gif");
+                comExt.Items.Remove("ico");
+                comExt.SelectedItem = (string)PasteIntoFile.Properties.Settings.Default["defaultTextType"];
                 IsText = true;
                 txtContent.Text = Clipboard.GetText();
-                return;
             }
-
-            if (Clipboard.ContainsImage())
+            else if (Clipboard.ContainsImage())
             {
                 txtCurrentLocation.Text = CurrentLocation ?? Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
                 lblType.Text = "Image";
-                comExt.SelectedItem = "png";
+                comExt.Items.Remove("txt");
+                comExt.Items.Remove("html");
+                comExt.Items.Remove("js");
+                comExt.Items.Remove("css");
+                comExt.Items.Remove("csv");
+                comExt.Items.Remove("json");
+                comExt.Items.Remove("cs");
+                comExt.Items.Remove("cpp");
+                comExt.Items.Remove("java");
+                comExt.Items.Remove("php");
+                comExt.SelectedItem = (string)PasteIntoFile.Properties.Settings.Default["defaultImageType"];
                 imgContent.Image = Clipboard.GetImage();
-                return;
             }
-
-            lblType.Text = "Unknown File";
-            btnSave.Enabled = false;
-
-
+            else
+            {
+                lblType.Text = "Unknown File";
+                btnSave.Enabled = false;
+            }
         }
 
         private void btnSave_Click(object sender, EventArgs e)
         {
             string location = txtCurrentLocation.Text;
-            location = location.EndsWith("\\") ? location : location + "\\";
-            string filename = txtFilename.Text + "." + comExt.SelectedItem.ToString();
             if (IsText)
             {
-
-                File.WriteAllText(location + filename, txtContent.Text, Encoding.UTF8);
+                Program.SaveTextToFile(txtContent.Text, txtFilename.Text, location);
                 this.Text += " : File Saved :)";
             }
             else
             {
-                switch (comExt.SelectedItem.ToString())
-                {
-                    case "png":
-                        imgContent.Image.Save(location + filename, ImageFormat.Png);
-                        break;
-                    case "ico":
-                        imgContent.Image.Save(location + filename, ImageFormat.Icon);
-                        break;
-                    case "jpg":
-                        imgContent.Image.Save(location + filename, ImageFormat.Jpeg);
-                        break;
-                    case "bmp":
-                        imgContent.Image.Save(location + filename, ImageFormat.Bmp);
-                        break;
-                    case "gif":
-                        imgContent.Image.Save(location + filename, ImageFormat.Gif);
-                        break;
-                    default:
-                        imgContent.Image.Save(location + filename, ImageFormat.Png);
-                        break;
-                }
-
+                Program.SaveImageToFile(imgContent.Image, txtFilename.Text, location);
                 this.Text += " : Image Saved :)";
             }
 
@@ -151,9 +123,6 @@ namespace PasteAsFile
             msg += "\nto Unregister the application use this argument : /unreg\n";
             msg += "\n--------------------\nSend Feedback to : eslamx7@gmail.com\n\nThanks :)";
             MessageBox.Show(msg, "Paste As File Help", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-
-
         }
 
         private void txtFilename_KeyPress(object sender, KeyPressEventArgs e)
@@ -162,6 +131,13 @@ namespace PasteAsFile
             {
                 btnSave_Click(sender, null);
             }
+        }
+
+        private void BtnOption_Click(object sender, EventArgs e)
+        {
+            PasteIntoFile.Options options = new PasteIntoFile.Options();
+            options.Show();
+            options.SetDesktopLocation(DesktopLocation.X, DesktopLocation.Y);
         }
     }
 }

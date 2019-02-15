@@ -1,16 +1,17 @@
 ﻿using Microsoft.Win32;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Drawing.Imaging;
+using System.IO;
+using System.Text;
+using System.Runtime.InteropServices;
 
-namespace PasteAsFile
+namespace PasteIntoFile
 {
 	static class Program
 	{
-		/// <summary>
+        /// <summary>
 		/// The main entry point for the application.
 		/// </summary>
 		[STAThread]
@@ -23,14 +24,26 @@ namespace PasteAsFile
 				if (args[0] == "/reg")
 				{
 					RegisterApp();
-					return;
 				}
 				else if (args[0] == "/unreg")
 				{
 					UnRegisterApp();
-					return;
 				}
-				Application.Run(new frmMain(args[0]));
+                else if ((bool)PasteIntoFile.Properties.Settings.Default["noUI"])
+                {
+                    if (Clipboard.ContainsText())
+                    {
+                        SaveTextToFile(Clipboard.GetText(), DateTime.Now.ToString(Properties.Settings.Default.filenameFormat.Replace("%application%", "'"+GetSourceName()+"'")), args[0]);
+                    }
+                    else if (Clipboard.ContainsImage())
+                    {
+                        SaveImageToFile(Clipboard.GetImage(), DateTime.Now.ToString(Properties.Settings.Default.filenameFormat.Replace("%application%", "'" + GetSourceName() + "'")), args[0]);
+                    }
+                }
+                else
+                {
+                    Application.Run(new frmMain(args[0]));
+                }
 			}
 			else
 			{
@@ -38,6 +51,56 @@ namespace PasteAsFile
 			}
 			
 		}
+
+        public static string GetSourceName()
+        {
+            Process clipboardProcess = ClipboardProcess();
+
+            if (clipboardProcess.ProcessName == "Idle")
+            {
+                return "";
+            }
+            else
+            {
+                return (clipboardProcess.ProcessName == "svchost" && Clipboard.ContainsImage() ?
+                    "Screenclip" : string.IsNullOrWhiteSpace(clipboardProcess.MainModule.FileVersionInfo.FileDescription) ?
+                        clipboardProcess.ProcessName : clipboardProcess.MainModule.FileVersionInfo.FileDescription);
+            }
+        }
+
+        public static void SaveTextToFile(string textData, string filename, string location)
+        {
+            location = location.EndsWith("\\") ? location : location + "\\";
+            
+            File.WriteAllText(location + filename + "." + Properties.Settings.Default.defaultTextType, textData, Encoding.UTF8);
+        }
+
+        public static void SaveImageToFile(System.Drawing.Image imageData, string filename, string location)
+        {
+            location = location.EndsWith("\\") ? location : location + "\\";
+            filename += "." + Properties.Settings.Default.defaultImageType;
+            switch (Properties.Settings.Default.defaultImageType)
+            {
+                case "png":
+                    imageData.Save(location + filename, ImageFormat.Png);
+                    break;
+                case "ico":
+                    imageData.Save(location + filename, ImageFormat.Icon);
+                    break;
+                case "jpg":
+                    imageData.Save(location + filename, ImageFormat.Jpeg);
+                    break;
+                case "bmp":
+                    imageData.Save(location + filename, ImageFormat.Bmp);
+                    break;
+                case "gif":
+                    imageData.Save(location + filename, ImageFormat.Gif);
+                    break;
+                default:
+                    imageData.Save(location + filename, ImageFormat.Png);
+                    break;
+            }
+        }
 
 		public static void UnRegisterApp()
 		{
@@ -105,5 +168,17 @@ namespace PasteAsFile
 		{
 			return Registry.CurrentUser.CreateSubKey(@"Software\Classes\Directory");
 		}
-	}
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetClipboardOwner();
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        static private Process ClipboardProcess()
+        {
+            GetWindowThreadProcessId(GetClipboardOwner(), out uint processId);
+            return Process.GetProcessById((int)processId);
+        }
+    }
 }
